@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/menu_ble_search"
+        android:icon="@drawable/baseline_scansearch_white_18"
+        android:title="@string/ble_menu_search"
+        app:showAsAction="ifRoom|withText" />
+
+    <item
+        android:id="@+id/menu_ble_disconnect"
+        android:icon="@drawable/baseline_bluetooth_disconnect_white_18"
+        android:title="@string/ble_menu_disconnect"
+        app:showAsAction="ifRoom|withText"  />
+
+</menu>
