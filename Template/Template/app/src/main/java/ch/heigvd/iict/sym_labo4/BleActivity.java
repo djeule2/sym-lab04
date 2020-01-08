@@ -4,22 +4,26 @@ import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothManager;
 import android.bluetooth.le.BluetoothLeScanner;
 import android.bluetooth.le.ScanCallback;
+import android.bluetooth.le.ScanFilter;
 import android.bluetooth.le.ScanResult;
 import android.bluetooth.le.ScanSettings;
 import android.content.Context;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.ParcelUuid;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.AdapterView;
-import android.widget.LinearLayout;
+import android.widget.EditText;
 import android.widget.ListView;
-import android.widget.RelativeLayout;
 import android.widget.TextView;
 
 import androidx.lifecycle.ViewModelProviders;
+
+import java.util.Arrays;
+import java.util.UUID;
 
 import ch.heigvd.iict.sym_labo4.abstractactivies.BaseTemplateActivity;
 import ch.heigvd.iict.sym_labo4.adapters.ResultsAdapter;
@@ -28,10 +32,12 @@ import ch.heigvd.iict.sym_labo4.viewmodels.BleOperationsViewModel;
 /**
  * Project: Labo4
  * Created by fabien.dutoit on 09.08.2019
+ * Updated by Matthieu Girard & Olivier Djeuzeleck
  * (C) 2019 - HEIG-VD, IICT
  */
 
 public class BleActivity extends BaseTemplateActivity {
+    static final UUID SERVICESYM_UUID = UUID.fromString("3c0a1000-281d-4b48-b2a7-f15579a1c38f");
 
     private static final String TAG = BleActivity.class.getSimpleName();
 
@@ -99,6 +105,21 @@ public class BleActivity extends BaseTemplateActivity {
         //ble events
         this.bleViewModel.isConnected().observe(this, (isConnected) -> {
             updateGui();
+        });
+
+        this.bleViewModel.getTemperature().observe(this, temperature -> {
+            TextView tempTextView = findViewById(R.id.tempValueText);
+            tempTextView.setText(temperature.toString() +"°C");
+        });
+
+        this.bleViewModel.getCounter().observe(this, counter -> {
+            TextView counterTextView = findViewById(R.id.counterValue);
+            counterTextView.setText(counter.toString());
+        });
+
+        this.bleViewModel.getTime().observe(this, time -> {
+            TextView timeTextView = findViewById(R.id.timeValueText);
+            timeTextView.setText(time);
         });
     }
 
@@ -175,15 +196,13 @@ public class BleActivity extends BaseTemplateActivity {
             builderScanSettings.setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY);
             builderScanSettings.setReportDelay(0);
 
-            //we scan for any BLE device
-            //we don't filter them based on advertised services...
-            //TODO ajouter un filtre pour n'afficher que les devices proposant
-            // le service "SYM" (UUID: "3c0a1000-281d-4b48-b2a7-f15579a1c38f")
-
             //reset display
             scanResultsAdapter.clear();
 
-            bluetoothScanner.startScan(null, builderScanSettings.build(), leScanCallback);
+            // Création du filtre
+            ScanFilter scanFilter = new ScanFilter.Builder().setServiceUuid(new ParcelUuid(SERVICESYM_UUID)).build();
+            // Scanning des devices qui match notre filtre
+            bluetoothScanner.startScan(Arrays.asList(scanFilter), builderScanSettings.build(), leScanCallback);
             Log.d(TAG,"Start scanning...");
             isScanning = true;
 
@@ -210,4 +229,20 @@ public class BleActivity extends BaseTemplateActivity {
         }
     };
 
+    // Envoie un entier au périphérique
+    public void sendIntegerValue(View view) {
+        EditText integerField = findViewById(R.id.sendIntegerField);
+        int value = Integer.parseInt(integerField.getText().toString());
+        bleViewModel.sendInteger(value);
+    }
+
+    // Récupère la température donnée par le périphérique
+    public void onPressTemp(View view) {
+        bleViewModel.readTemperature();
+    }
+
+    // Met à jour l'horloge du périphérique
+    public void updateTime(View view) {
+        bleViewModel.updateTime();
+    }
 }
