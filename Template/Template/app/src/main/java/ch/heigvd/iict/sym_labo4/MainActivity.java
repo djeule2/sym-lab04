@@ -1,6 +1,7 @@
 package ch.heigvd.iict.sym_labo4;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -57,6 +58,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    @SuppressLint("NeedOnRequestPermissionsResult")
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);

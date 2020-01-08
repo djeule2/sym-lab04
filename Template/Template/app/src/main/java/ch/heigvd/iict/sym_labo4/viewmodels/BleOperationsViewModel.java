@@ -13,8 +13,17 @@ import androidx.lifecycle.AndroidViewModel;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.GregorianCalendar;
+import java.util.UUID;
+
 import no.nordicsemi.android.ble.BleManager;
 import no.nordicsemi.android.ble.BleManagerCallbacks;
+import no.nordicsemi.android.ble.data.Data;
 
 public class BleOperationsViewModel extends AndroidViewModel {
 
@@ -29,6 +38,23 @@ public class BleOperationsViewModel extends AndroidViewModel {
         return mIsConnected;
     }
 
+    // LiveData sur la température donnée par le périphérique
+    private final MutableLiveData<Integer> mTemperature = new MutableLiveData<>();
+    public LiveData<Integer> getTemperature() {
+        return mTemperature;
+    }
+
+    // LiveData sur le nombre de boutons pressés du périphérique
+    private final MutableLiveData<Integer> mCounter = new MutableLiveData<>();
+    public LiveData<Integer> getCounter() {
+        return mCounter;
+    }
+
+    // LiveData sur l'horloge du périphérique
+    private final MutableLiveData<String> mTime = new MutableLiveData<>();
+    public LiveData<String> getTime() {
+        return mTime;
+    }
     //references to the Services and Characteristics of the SYM Pixl
     private BluetoothGattService timeService = null, symService = null;
     private BluetoothGattCharacteristic currentTimeChar = null, integerChar = null, temperatureChar = null, buttonClickChar = null;
@@ -64,13 +90,23 @@ public class BleOperationsViewModel extends AndroidViewModel {
             mConnection.disconnect();
         }
     }
-    /* TODO
-        vous pouvez placer ici les différentes méthodes permettant à l'utilisateur
-        d'interagir avec le périphérique depuis l'activité
-     */
+
+    // Récupère la température sur le périphérique
     public boolean readTemperature() {
         if(!isConnected().getValue() || temperatureChar == null) return false;
         return ble.readTemperature();
+    }
+
+    // Envoie un entier sur le périphérique
+    public boolean sendInteger(int value) {
+        if(!isConnected().getValue() || integerChar == null) return false;
+        return ble.sendInteger(value);
+    }
+
+    // Met à jour l'heure sur le périphérique
+    public boolean updateTime() {
+        if(!isConnected().getValue() || currentTimeChar == null) return false;
+        return ble.updateTime();
     }
 
     private BleManagerCallbacks bleManagerCallbacks = new BleManagerCallbacks() {
@@ -144,6 +180,15 @@ public class BleOperationsViewModel extends AndroidViewModel {
      *  This class is used to implement the protocol to communicate with the BLE device
      */
     private class MySymBleManager extends BleManager<BleManagerCallbacks> {
+        // Services UUID
+        private final UUID TIMESERVICE_UUID = UUID.fromString("00001805-0000-1000-8000-00805f9b34fb");
+        private final UUID SYMSERVICE_UUID = UUID.fromString("3c0a1000-281d-4b48-b2a7-f15579a1c38f");
+
+        // Caractéristiques UUID
+        private final UUID CURRENTTIME_CHAR = UUID.fromString("00002a2b-0000-1000-8000-00805f9b34fb");
+        private final UUID INTEGER_CHAR = UUID.fromString("3c0a1001-281d-4b48-b2a7-f15579a1c38f");
+        private final UUID TEMPERATURE_CHAR = UUID.fromString("3c0a1002-281d-4b48-b2a7-f15579a1c38f");
+        private final UUID BUTTONS_CHAR = UUID.fromString("3c0a1003-281d-4b48-b2a7-f15579a1c38f");
 
         private MySymBleManager() {
             super(getApplication());
@@ -156,32 +201,75 @@ public class BleOperationsViewModel extends AndroidViewModel {
          * BluetoothGatt callbacks object.
          */
         private final BleManagerGattCallback mGattCallback = new BleManagerGattCallback() {
-
             @Override
             public boolean isRequiredServiceSupported(@NonNull final BluetoothGatt gatt) {
                 mConnection = gatt; //trick to force disconnection
                 Log.d(TAG, "isRequiredServiceSupported - discovered services:");
 
-                /* TODO
-                    - Nous devons vérifier ici que le périphérique auquel on vient de se connecter possède
-                      bien tous les services et les caractéristiques attendues, on vérifiera aussi que les
-                      caractéristiques présentent bien les opérations attendues
-                    - On en profitera aussi pour garder les références vers les différents services et
-                      caractéristiques (déclarés en lignes 33 et 34)
-                 */
+                timeService = gatt.getService(TIMESERVICE_UUID);
+                symService = gatt.getService(SYMSERVICE_UUID);
+                if (timeService != null) {
+                    currentTimeChar = timeService.getCharacteristic(CURRENTTIME_CHAR);
+                }
+                if (symService != null) {
+                    integerChar = symService.getCharacteristic(INTEGER_CHAR);
+                    temperatureChar = symService.getCharacteristic(TEMPERATURE_CHAR);
+                    buttonClickChar = symService.getCharacteristic(BUTTONS_CHAR);
+                }
+                // Validate properties
+                boolean readTemperature = false;
+                if (temperatureChar != null) {
+                    readTemperature = (temperatureChar.getProperties() & BluetoothGattCharacteristic.PROPERTY_READ) != 0;
+                }
+                boolean notifyButtons = false;
+                if (buttonClickChar != null) {
+                    final int properties = buttonClickChar.getProperties();
+                    notifyButtons = (properties & BluetoothGattCharacteristic.PROPERTY_NOTIFY) != 0;
+                }
+                boolean writeInteger = false;
+                if (integerChar != null) {
+                    final int properties = integerChar.getProperties();
+                    writeInteger = (properties & BluetoothGattCharacteristic.PROPERTY_WRITE) != 0;
+                    integerChar.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
+                }
+                boolean notifyTime = false;
+                boolean writeTime = false;
+                if (currentTimeChar != null) {
+                    final int propertiesNotify = currentTimeChar.getProperties();
+                    notifyTime = (propertiesNotify & BluetoothGattCharacteristic.PROPERTY_NOTIFY) != 0;
 
-                //FIXME si tout est OK, on retourne true, sinon la librairie appelera la méthode onDeviceNotSupported()
-                return false;
+                    final int propertiesWrite = integerChar.getProperties();
+                    writeTime = (propertiesWrite & BluetoothGattCharacteristic.PROPERTY_WRITE) != 0;
+                    integerChar.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
+                }
+
+                // Return true if all required services have been found
+                return currentTimeChar != null && integerChar != null && temperatureChar != null && buttonClickChar != null
+                        && readTemperature && notifyButtons && writeInteger && notifyTime && writeTime;
             }
 
             @Override
             protected void initialize() {
-                /* TODO
-                    Ici nous somme sûr que le périphérique possède bien tous les services et caractéristiques
-                    attendus et que nous y sommes connectés. Nous pouvous effectuer les premiers échanges BLE:
-                    Dans notre cas il s'agit de s'enregistrer pour recevoir les notifications proposées par certaines
-                    caractéristiques, on en profitera aussi pour mettre en place les callbacks correspondants.
-                 */
+                // Enregistrement des notifications sur le nombre de boutons pressés
+                setNotificationCallback(buttonClickChar).with((device, data) ->
+                        mCounter.setValue(data.getIntValue(Data.FORMAT_UINT8, 0))
+                );
+                enableNotifications(buttonClickChar).enqueue();
+
+                // Enregistrement des notifications sur l'heure du périphérique
+                setNotificationCallback(currentTimeChar).with((device, data) -> {
+                    int year        = data.getIntValue(Data.FORMAT_UINT16, 0);
+                    int month       = data.getIntValue(Data.FORMAT_UINT8, 2);
+                    int dayOfMonth  = data.getIntValue(Data.FORMAT_UINT8, 3);
+                    int hour        = data.getIntValue(Data.FORMAT_UINT8, 4);
+                    int minutes     = data.getIntValue(Data.FORMAT_UINT8, 5);
+                    int seconds     = data.getIntValue(Data.FORMAT_UINT8, 6);
+
+                    DateFormat formatter = new SimpleDateFormat("E MMM d yyyy, HH:mm:ss");
+                    GregorianCalendar c = new GregorianCalendar(year, month - 1, dayOfMonth, hour, minutes, seconds);
+                    mTime.setValue(formatter.format(c.getTime()));
+                });
+                enableNotifications(currentTimeChar).enqueue();
             }
 
             @Override
@@ -197,13 +285,49 @@ public class BleOperationsViewModel extends AndroidViewModel {
             }
         };
 
+        // On récupère la température via lecture de la caractéristique Temperature
         public boolean readTemperature() {
-            /* TODO on peut effectuer ici la lecture de la caractéristique température
-                la valeur récupérée sera envoyée à l'activité en utilisant le mécanisme
-                des MutableLiveData
-                On placera des méthodes similaires pour les autres opérations...
-            */
-            return false; //FIXME
+            if (temperatureChar != null) {
+                readCharacteristic(temperatureChar).with((device, data) -> {
+                    mTemperature.setValue(data.getIntValue(Data.FORMAT_UINT16, 0) / 10);
+                }).enqueue();
+                return true;
+            }
+            return false;
+        }
+
+        // Envoi d'un entier par écriture sur la caractéristique int
+        public boolean sendInteger(int value) {
+            if (integerChar == null) return false;
+
+            ByteBuffer bb = ByteBuffer.allocate(4); // On crée un Uint32
+            bb.putInt(value);
+            bb.order(ByteOrder.LITTLE_ENDIAN); // On le transforme en LITTLE ENDIAN
+            writeCharacteristic(integerChar, bb.array()).enqueue();
+            return true;
+        }
+
+        // Mise à jour de l'heure sur le périphérique via écriture sur la caractéristique Current Time
+        public boolean updateTime() {
+            if (currentTimeChar == null) return false;
+
+            Calendar time = new GregorianCalendar();
+            byte[] field = new byte[10];
+
+            int year = time.get(Calendar.YEAR);
+            field[0] = (byte) (year & 0xFF);
+            field[1] = (byte) ((year >> 8) & 0xFF);
+            field[2] = (byte) (time.get(Calendar.MONTH) + 1);
+            field[3] = (byte) time.get(Calendar.DATE);
+            field[4] = (byte) time.get(Calendar.HOUR_OF_DAY);
+            field[5] = (byte) time.get(Calendar.MINUTE);
+            field[6] = (byte) time.get(Calendar.SECOND);
+            field[7] = (byte) Calendar.DAY_OF_WEEK;
+            field[8] = (byte) (time.get(Calendar.MILLISECOND) / 256);
+            field[9] = 0;
+
+            writeCharacteristic(currentTimeChar, field).enqueue();
+            return true;
         }
     }
 }
