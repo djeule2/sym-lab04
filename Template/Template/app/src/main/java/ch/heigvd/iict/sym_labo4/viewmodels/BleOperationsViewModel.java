@@ -39,8 +39,8 @@ public class BleOperationsViewModel extends AndroidViewModel {
     }
 
     // LiveData sur la température donnée par le périphérique
-    private final MutableLiveData<Integer> mTemperature = new MutableLiveData<>();
-    public LiveData<Integer> getTemperature() {
+    private final MutableLiveData<Double> mTemperature = new MutableLiveData<>();
+    public LiveData<Double> getTemperature() {
         return mTemperature;
     }
 
@@ -289,7 +289,7 @@ public class BleOperationsViewModel extends AndroidViewModel {
         public boolean readTemperature() {
             if (temperatureChar != null) {
                 readCharacteristic(temperatureChar).with((device, data) -> {
-                    mTemperature.setValue(data.getIntValue(Data.FORMAT_UINT16, 0) / 10);
+                    mTemperature.setValue(data.getIntValue(Data.FORMAT_UINT16, 0) / 10.0);
                 }).enqueue();
                 return true;
             }
