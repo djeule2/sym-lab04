@@ -1,7 +1,5 @@
 package ch.heigvd.iict.sym_labo4;
 
-import android.app.Activity;
-import android.content.Context;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
@@ -14,7 +12,14 @@ import android.view.WindowManager;
 
 import ch.heigvd.iict.sym_labo4.gl.OpenGLRenderer;
 
-public class CompassActivity extends AppCompatActivity {
+/**
+ * Project: Labo4
+ * Created by fabien.dutoit on 09.08.2019
+ * Updated by Matthieu Girard & Olivier Djeuzeleck
+ * (C) 2019 - HEIG-VD, IICT
+ */
+
+public class CompassActivity extends AppCompatActivity implements SensorEventListener{
 
     //opengl
     private OpenGLRenderer  opglr           = null;
@@ -22,18 +27,15 @@ public class CompassActivity extends AppCompatActivity {
     private SensorManager sensorManager= null;
     private Sensor accelerometer = null;
     private Sensor magnetic = null;
-    float[] acceleromterValues = new float[3];
-    float[] magneticValues = new float[3];
-    float[] resultValues = new float[16];
-    OpenGLRenderer openGLRenderer;
+    private final float[] acceleromterValues = new float[3];
+    private final float[] magneticValues = new float[3];
+    private float[] resultValues = new float[16];
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
         sensorManager = (SensorManager)getSystemService(SENSOR_SERVICE);
-        accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-        magnetic = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
-        openGLRenderer = new OpenGLRenderer(this);
+        opglr = new OpenGLRenderer(this);
 
 
         // we need fullscreen
@@ -54,50 +56,47 @@ public class CompassActivity extends AppCompatActivity {
 
     }
 
-    /* TODO
-        your activity need to register to accelerometer and magnetometer sensors' updates
-        then you may want to call
-        this.opglr.swapRotMatrix()
-        with the 4x4 rotation matrix, everytime a new matrix is computed
-        more information on rotation matrix can be found on-line:
-        https://developer.android.com/reference/android/hardware/SensorManager.html#getRotationMatrix(float[],%20float[],%20float[],%20float[])
-    */
 
+    @Override
+    public void onSensorChanged(SensorEvent sensorEvent) {
 
-
-    final SensorEventListener mSensorEventListener = new SensorEventListener() {
-        @Override
-        public void onSensorChanged(SensorEvent sensorEvent) {
-            //mettre à jour la valeur de l'accéléromètre et du champ magnetique
-            if(sensorEvent.sensor.getType()==Sensor.TYPE_ACCELEROMETER){
-                acceleromterValues = sensorEvent.values;
-            }
-            if( sensorEvent.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD){
-                magneticValues = sensorEvent.values;
-            }
-
-            SensorManager.getRotationMatrix(resultValues, null, acceleromterValues, magneticValues );
-            openGLRenderer.swapRotMatrix(resultValues);
+        // Get readings from accelerometer and magnetometer.
+        if(sensorEvent.sensor.getType()==Sensor.TYPE_ACCELEROMETER){
+            System.arraycopy(sensorEvent.values, 0, acceleromterValues,0, acceleromterValues.length);
+        }
+        else if( sensorEvent.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD){
+            System.arraycopy(sensorEvent.values, 0, magneticValues, 0, magneticValues.length);
         }
 
-        @Override
-        public void onAccuracyChanged(Sensor sensor, int accuracy) {
 
-        }
-    };
+        // Update rotation matrix, which is needed to update orientation angles.
+        SensorManager.getRotationMatrix(resultValues, null, acceleromterValues, magneticValues );
+        resultValues = opglr.swapRotMatrix(resultValues);
+    }
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy) {
+
+    }
 
     protected void onResume(){
         super.onResume();
-        sensorManager.registerListener(mSensorEventListener, accelerometer,
-                SensorManager.SENSOR_DELAY_NORMAL);
-        sensorManager.registerListener(mSensorEventListener, magnetic,
-                SensorManager.SENSOR_DELAY_UI);
+        // Get updates from the accelerometer and magnetometer at a constant rate.
+        accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        magnetic = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
+
+        if(accelerometer!=null)
+            sensorManager.registerListener(this, accelerometer,
+                    SensorManager.SENSOR_DELAY_NORMAL, SensorManager.SENSOR_DELAY_UI);
+        if(magnetic!=null)
+            sensorManager.registerListener(this, magnetic,
+                    SensorManager.SENSOR_DELAY_NORMAL, SensorManager.SENSOR_DELAY_UI);
     }
 
     protected void onPause(){
         super.onPause();
-        sensorManager.unregisterListener(mSensorEventListener, accelerometer);
-        //sensorManager.unregisterListener(mSensorEventListener, magnetic);
+        //Don't receive any more updates from either sensor.
+        sensorManager.unregisterListener(this);
     }
 
 }
